@@ -1,0 +1,58 @@
+apiVersion: apps/v1                
+kind: Deployment                      # Я выбрал Deployment для управления состоянием приложения и автоматического создания/обновления подов. Это удобно для масштабируемых приложений, о чем я прочитал в документации.
+metadata:
+  name: my-app                       
+spec:
+  replicas: 3                         # Я указал replicas: 3, чтобы справляться с нагрузкой. В документации сказано, что три пода обеспечивают высокую доступность, но не уверен, достаточно ли этого.
+  selector:                        
+      app: my-app                     
+  template:                         
+    metadata:
+      labels:
+        app: my-app                 
+    spec:
+      affinity:                       # Размещение подов на разных нодах
+        podAntiAffinity:              # Добавил AntiAffinity, чтобы распределить поды по разным нодам и избежать запуска подов на одной ноде.
+          requiredDuringSchedulingIgnoredDuringExecution: 
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: Exists   
+      containers:
+      - name: my-container            
+        image: my-image:latest        
+        ports:
+        - containerPort: 80           
+        resources:                    # В resources добавил requests и limits для управления ресурсами. Установил requests на 0.1 CPU и 128Mi памяти, с учётом того что на старте может потребоваться больше ресурсов.
+          requests:
+            memory: "128Mi"          
+            cpu: "0.1"               
+          limits:
+            memory: "256Mi"          
+            cpu: "2"                # Неизвестно максимальное количество требуемого CPU на старте , но и оставлять без лимита тоже не желательно.
+                                      # Я предположил что у приложения уже есть /health и /ready
+      readinessProbe:                 # Проверка готовности контейнера, чтобы под не обрабатывал запросы, пока не будет готов.
+        httpGet:                    
+          path: /ready               
+          port: 80                   
+        initialDelaySeconds: 10      # Задержка перед первой проверкой
+        periodSeconds: 5             
+      livenessProbe:                  
+        httpGet:                    
+          path: /health              
+          port: 80                   
+        initialDelaySeconds: 10      # Задержка перед первой проверкой живости
+        periodSeconds: 20            # Интервал проверки живости
+---
+apiVersion: v1
+kind: Service            # Добавим сервис чтобы Куб распределял трафик равномерно (RoundRobin) между Ready подами.
+metadata:
+  name: my-app-service                   
+spec:
+  selector:
+    app: my-app                          
+  ports:
+    - protocol: TCP    
+      port: 80                           
+      targetPort: 80                     
+  type: ClusterIP                       
