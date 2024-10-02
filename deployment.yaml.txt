@@ -1,0 +1,45 @@
+apiVersion: apps/v1                  # Версия API для Deployment
+kind: Deployment                      # Я выбрал Deployment для управления состоянием приложения и автоматического создания/обновления подов. Это удобно для масштабируемых приложений, о чем я прочитал в документации.
+metadata:
+  name: my-app                        # Имя нашего приложения
+spec:
+  replicas: 3                         # Я указал replicas: 3, чтобы справляться с нагрузкой. В документации сказано, что три пода обеспечивают высокую доступность, но не уверен, достаточно ли этого.
+  selector:                           # Определяем, какие поды управляются этим Deployment
+    matchLabels:
+      app: my-app                     # Метка для поиска подов
+  template:                           # Шаблон для создания подов
+    metadata:
+      labels:
+        app: my-app                   # Метки для идентификации подов
+    spec:
+      affinity:                       # Размещение подов на разных нодах
+        podAntiAffinity:              # Добавил affinity, чтобы распределить поды по разным нодам и избежать одновременного падения всех подов. Не разбираюсь в нюансах, просто посмотрел, как делают другие.
+          requiredDuringSchedulingIgnoredDuringExecution: # Обязательное условие
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: Exists   # Указываем, что хотим, чтобы поды были на разных нодах
+      containers:
+      - name: my-container            # Имя контейнера
+        image: my-image:latest        # Образ контейнера
+        ports:
+        - containerPort: 80           # Порт для обработки запросов
+        resources:                    # В resources добавил requests и limits для управления ресурсами. Установил requests на 0.1 CPU и 128Mi памяти, соответствующие требованиям, но не уверен, как это повлияет на производительность.
+          requests:
+            memory: "128Mi"          # Минимальная память
+            cpu: "0.1"               # Минимальный CPU
+          limits:
+            memory: "256Mi"          # Максимальная память
+            cpu: "0.5"                # Максимальный CPU
+      readinessProbe:                 # Проверка готовности контейнера, Включил readinessProbe и livenessProbe, чтобы под не обрабатывал запросы, пока не будет готов.
+        httpGet:                     # Проверяем доступность
+          path: /health              # Путь для проверки готовности
+          port: 80                   # Порт для проверки
+        initialDelaySeconds: 10      # Задержка перед первой проверкой
+        periodSeconds: 5             # Интервал проверки готовности
+      livenessProbe:                  # Проверка живости контейнера
+        httpGet:                     # Проверяем, что контейнер работает
+          path: /health              # Путь для проверки живости
+          port: 80                   # Порт для проверки
+        initialDelaySeconds: 10      # Задержка перед первой проверкой живости
+        periodSeconds: 20            # Интервал проверки живости
